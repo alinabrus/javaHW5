@@ -14,9 +14,11 @@ import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
 import lombok.RequiredArgsConstructor;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.sql.SQLException;
 import java.time.LocalDateTime;
 import java.util.Optional;
 
@@ -32,7 +34,12 @@ public class TodoServiceImpl implements TodoService {
         Todo todo = todoMapper.toModel(createTodoRequestDto);
         todo.setStatus(Status.PENDING);
         todo.setCreatedDate(LocalDateTime.now());
-        return todoMapper.toDto(todoRepository.save(todo));
+        try {
+            todo = todoRepository.save(todo);
+        } catch (DataIntegrityViolationException ex) {
+            throw new com.abrus.hw5.todo.exception.DataIntegrityViolationException("Todo", ex.getCause().getCause().getMessage());
+        }
+        return todoMapper.toDto(todo);
     }
 
     @Override
@@ -46,8 +53,18 @@ public class TodoServiceImpl implements TodoService {
         updatedTodo.setId(id);
         updatedTodo.setCreatedDate(todo.getCreatedDate());
         updatedTodo.setUpdatedDate(LocalDateTime.now());
-        updatedTodo = todoRepository.save(updatedTodo);
-
+        try {
+            /*
+            If an exception occurs and the transaction is rolled back, Spring will silently suppress the original exception
+            and instead throw an UnexpectedRollbackException. This can cause the actual exception message to be lost, leading to confusion when trying to debug or inform the user.
+            That is because the exception happens during the commit. If you want to trigger constraint checks before the commit
+            then do a saveAndFlush (assuming you are extending JpaRepository for your repositories) or directly call flush on the EntityManager.
+            That will trigger state sync with the database before the commit and will get you another DataAccessException
+            */
+            updatedTodo = todoRepository.saveAndFlush(updatedTodo);
+        } catch (DataIntegrityViolationException ex) {
+            throw new com.abrus.hw5.todo.exception.DataIntegrityViolationException("Todo", ex.getCause().getCause().getMessage());
+        }
         TaskHistory taskHistory = new TaskHistory();
         taskHistory.setTodo(updatedTodo);
         ObjectMapper objectMapper = new ObjectMapper();
@@ -55,8 +72,8 @@ public class TodoServiceImpl implements TodoService {
         try {
             taskHistory.setOldState(objectMapper.writeValueAsString(todo));
             taskHistory.setNewState(objectMapper.writeValueAsString(updatedTodo));
-        } catch(JsonProcessingException jsonProcessingException) {
-            throw new RuntimeException("Error while transforming Todo object to a text column as json string: " + jsonProcessingException.getMessage());
+        } catch(Throwable ex) {
+            throw new com.abrus.hw5.todo.exception.JsonProcessingException("Error while transforming Todo object to a text column as json string: " + ex.getMessage());
         }
         taskHistory.setChangeDate(updatedTodo.getUpdatedDate());
         taskHistoryRepository.save(taskHistory);
@@ -75,8 +92,8 @@ public class TodoServiceImpl implements TodoService {
 
     @Override
     public TodoResponseDto findById(Long id) {
-        Todo todo = todoRepository.findById(id)
+        return todoRepository.findById(id)
+                .map(todoMapper::toDto)
                 .orElseThrow(() -> new EntityNotFoundException("Todo", id));
-        return todoMapper.toDto(todo);
     }
 }

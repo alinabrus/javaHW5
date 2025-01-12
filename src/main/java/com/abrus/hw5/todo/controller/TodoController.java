@@ -1,8 +1,10 @@
 package com.abrus.hw5.todo.controller;
 
+import com.abrus.hw5.todo.dto.taskHistory.TaskHistoryResponseDto;
 import com.abrus.hw5.todo.dto.todo.CreateTodoRequestDto;
 import com.abrus.hw5.todo.dto.todo.TodoResponseDto;
 import com.abrus.hw5.todo.dto.todo.UpdateTodoRequestDto;
+import com.abrus.hw5.todo.service.taskHistory.TaskHistoryService;
 import com.abrus.hw5.todo.service.todo.TodoService;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
@@ -17,11 +19,14 @@ import org.springframework.web.bind.annotation.ResponseStatus;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.http.HttpStatus;
 
+import java.util.List;
+
 @RestController
 @RequiredArgsConstructor
 @RequestMapping(value = "/todo")
 public class TodoController {
     private final TodoService todoService;
+    private final TaskHistoryService taskHistoryService;
 
     @PostMapping
     public TodoResponseDto create(@RequestBody @Valid CreateTodoRequestDto createTodoRequestDto) {
@@ -42,5 +47,10 @@ public class TodoController {
     @ResponseStatus(HttpStatus.NO_CONTENT)
     public void deleteById(@PathVariable Long id) {
         todoService.deleteById(id);
+    }
+
+    @GetMapping("/{todoId}/history")
+    public List<TaskHistoryResponseDto> getTodoHistory(@PathVariable Long todoId) {
+        return taskHistoryService.findByTodoId(todoId);
     }
 }
